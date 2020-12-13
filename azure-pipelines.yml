@@ -1,0 +1,99 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+- master
+
+pool:
+  vmImage: vs2017-win2016
+
+variables:
+  Terraform.Version:                  '0.13.0'
+
+stages:
+
+- stage: build_stage
+  displayName: Build Artifact
+
+  jobs:
+    - job: buildjob
+      displayName: Build Artifact
+
+      steps:
+      - task: GitVersion@5
+        inputs:
+          runtime: 'core'
+
+      - task: CopyFiles@2
+        displayName: Copy terraform files in artifact
+        inputs:
+          SourceFolder: '$(build.sourcesdirectory)'
+          Contents: '**'
+          TargetFolder: '$(build.artifactstagingdirectory)/terraform'
+
+      - publish: '$(Build.ArtifactStagingDirectory)'
+        artifact: 'Demo-AKS-$(Build.BuildNumber)'
+        displayName: Publish Artifact Demo-AKS-$(Build.BuildNumber)
+
+- stage: deploy_kubernetes_infra_stage
+  displayName: Deploy AKS cluster
+  dependsOn: build_stage
+
+  jobs:
+  - deployment: deployterraformazurejob
+    displayName: Deploy with Terraform
+    environment: Azure
+    strategy:
+      runOnce:
+        deploy:
+
+          steps:
+          - task: replacetokens@3
+            displayName: 'Replace tokens in **/*.tfvars **/provider.tf'
+            inputs:
+              rootDirectory: '$(Pipeline.Workspace)/Demo-AKS-$(Build.BuildNumber)/terraform'
+              targetFiles: |
+                **/*.tfvars
+                **/provider.tf
+              encoding: 'auto'
+              writeBOM: true
+              actionOnMissing: 'warn'
+              keepToken: false
+              tokenPrefix: '__'
+              tokenSuffix: '__'
+
+          - task: TerraformInstaller@0
+            displayName: 'Install Terraform version $(Terraform.Version)'
+            inputs:
+              terraformVersion: '$(Terraform.Version)'
+
+          - task: TerraformTaskV1@0
+            displayName: Terraform init
+            inputs:
+              provider: 'azurerm'
+              command: 'init'
+              workingDirectory: '$(Pipeline.Workspace)/Demo-AKS-$(Build.BuildNumber)/terraform'
+              backendServiceArm: 'AzureConnexion'
+              backendAzureRmResourceGroupName: $(backend-rg)
+              backendAzureRmStorageAccountName: $(storage-account-name)
+              backendAzureRmContainerName: $(container-name)
+              backendAzureRmKey: $(backend-name)
+          - task: TerraformTaskV1@0
+            displayName: Terraform plan
+            inputs:
+              provider: 'azurerm'
+              command: 'plan'
+              workingDirectory: '$(Pipeline.Workspace)/Demo-AKS-$(Build.BuildNumber)/terraform'
+              commandOptions: '-input=false -var-file="variables.tfvars"'
+              environmentServiceNameAzureRM: 'AzureConnexion'
+
+          - task: TerraformTaskV1@0
+            displayName: Terraform apply
+            inputs:
+              provider: 'azurerm'
+              command: 'apply'
+              workingDirectory: '$(Pipeline.Workspace)/Demo-AKS-$(Build.BuildNumber)/terraform'
+              commandOptions: '-input=false -var-file="variables.tfvars"'
+              environmentServiceNameAzureRM: 'AzureConnexion'
