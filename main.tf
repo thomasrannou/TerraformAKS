@@ -38,7 +38,7 @@ resource "azurerm_container_registry" "acr" {
 # ======================================================================================
 # Cluster kubernetes
 # ======================================================================================
-resource "azurerm_kubernetes_cluster" "tf-cluster-aks-01" {
+resource "azurerm_kubernetes_cluster" "cluster-aks" {
   name                    = "${var.aks-cluster-name}"
   location                = "${azurerm_resource_group.tf-rg.location}"
   resource_group_name     = "${azurerm_resource_group.tf-rg.name}"   
